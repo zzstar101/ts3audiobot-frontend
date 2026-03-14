@@ -1,5 +1,5 @@
 <template>
-  <section class="card">
+  <section class="card panel-card search-card">
     <h2>搜索点歌</h2>
     <div class="result-header">{{ loginHint }}</div>
 
@@ -12,7 +12,7 @@
 
     <div class="result-header" v-if="results.length">{{ resultCountText }}</div>
 
-    <div ref="listRef" class="result-list scroll-list" @scroll="onListScroll">
+    <div ref="listRef" class="result-list scroll-list result-scroll-list" @scroll="onListScroll">
       <article v-for="(song, index) in results" :key="song.provider + '-' + song.id + '-' + index" class="song-card">
         <img :src="song.cover" alt="cover" class="song-cover" />
         <div class="song-meta">

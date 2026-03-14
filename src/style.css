@@ -63,10 +63,19 @@ body {
   display: grid;
   gap: 16px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: stretch;
 }
 
 .grid > .card {
   min-width: 0;
+  min-height: 0;
+}
+
+.panel-card {
+  --panel-height: clamp(560px, 68vh, 820px);
+  height: var(--panel-height);
+  display: flex;
+  flex-direction: column;
 }
 
 .card {
@@ -437,17 +446,44 @@ input[type='text'] {
 
 .result-list,
 .queue-list {
-  display: grid;
-  gap: 8px;
+  display: block;
+}
+
+.result-list > *,
+.queue-list > * {
+  width: 100%;
+}
+
+.result-list > * + *,
+.queue-list > * + * {
+  margin-top: 8px;
 }
 
 .scroll-list {
-  --list-item-height: 70px;
-  max-height: calc(var(--list-item-height) * 15 + 8px * 14);
+  --list-item-height: 72px;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
   overflow-y: auto;
+  overflow-x: hidden;
   padding-right: 4px;
   -ms-overflow-style: none;
   scrollbar-width: none;
+}
+
+.result-scroll-list {
+  max-height: none;
+}
+
+.queue-scroll-list {
+  max-height: none;
+  scroll-padding-bottom: 12px;
+}
+
+.queue-scroll-list::after {
+  content: '';
+  display: block;
+  height: 12px;
 }
 
 .scroll-list::-webkit-scrollbar {
@@ -459,9 +495,8 @@ input[type='text'] {
 .queue-item {
   border: 1px solid #1f2937;
   border-radius: 10px;
-  padding: 10px;
-  height: var(--list-item-height, 70px);
-  min-height: var(--list-item-height, 70px);
+  padding: 10px 12px;
+  height: var(--list-item-height, 72px);
 }
 
 .song-card {
@@ -532,6 +567,11 @@ input[type='text'] {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.queue-meta {
   min-width: 0;
 }
 
@@ -667,6 +707,14 @@ input[type='text'] {
 }
 
 @media (max-width: 980px) {
+  .panel-card {
+    --panel-height: clamp(500px, 62vh, 720px);
+  }
+
+  .scroll-list {
+    height: auto;
+  }
+
   .login-item {
     flex-direction: column;
     align-items: flex-start;

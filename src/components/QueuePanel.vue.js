@@ -1,41 +1,11 @@
-import { computed, ref, watch } from 'vue';
 const props = defineProps();
 const __VLS_emit = defineEmits();
-const listRef = ref(null);
-const visibleCount = ref(15);
-const STEP = 15;
-const visibleQueue = computed(() => props.queue.slice(0, visibleCount.value));
-function ensureVisibleCount() {
-    const queueLength = props.queue.length;
-    if (queueLength <= 0) {
-        visibleCount.value = STEP;
-        return;
-    }
-    const base = Math.min(queueLength, Math.max(STEP, visibleCount.value));
-    const mustInclude = props.currentIndex + 1;
-    visibleCount.value = Math.min(queueLength, Math.max(base, mustInclude));
-}
-function onListScroll() {
-    const el = listRef.value;
-    if (!el || visibleCount.value >= props.queue.length)
-        return;
-    const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 24;
-    if (nearBottom) {
-        visibleCount.value = Math.min(props.queue.length, visibleCount.value + STEP);
-    }
-}
-watch(() => props.queue.length, () => {
-    ensureVisibleCount();
-}, { immediate: true });
-watch(() => props.currentIndex, () => {
-    ensureVisibleCount();
-}, { immediate: true });
 debugger; /* PartiallyEnd: #3632/scriptSetup.vue */
 const __VLS_ctx = {};
 let __VLS_components;
 let __VLS_directives;
 __VLS_asFunctionalElement(__VLS_intrinsicElements.section, __VLS_intrinsicElements.section)({
-    ...{ class: "card" },
+    ...{ class: "card panel-card queue-card" },
 });
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "queue-header" },
@@ -45,12 +15,9 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.
 (__VLS_ctx.queue.length);
 if (__VLS_ctx.queue.length) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-        ...{ onScroll: (__VLS_ctx.onListScroll) },
-        ref: "listRef",
-        ...{ class: "queue-list scroll-list" },
+        ...{ class: "queue-list scroll-list queue-scroll-list" },
     });
-    /** @type {typeof __VLS_ctx.listRef} */ ;
-    for (const [song, index] of __VLS_getVForSourceType((__VLS_ctx.visibleQueue))) {
+    for (const [song, index] of __VLS_getVForSourceType((__VLS_ctx.queue))) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.article, __VLS_intrinsicElements.article)({
             key: (song.provider + '-' + song.id + '-' + index),
             ...{ class: "queue-item" },
@@ -68,7 +35,9 @@ if (__VLS_ctx.queue.length) {
             alt: "cover",
             ...{ class: "mini-cover" },
         });
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({});
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "queue-meta" },
+        });
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "song-title" },
         });
@@ -123,13 +92,6 @@ if (__VLS_ctx.queue.length) {
             });
         }
     }
-    if (__VLS_ctx.visibleQueue.length < __VLS_ctx.queue.length) {
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-            ...{ class: "list-footnote" },
-        });
-        (__VLS_ctx.visibleQueue.length);
-        (__VLS_ctx.queue.length);
-    }
 }
 else {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -137,13 +99,17 @@ else {
     });
 }
 /** @type {__VLS_StyleScopedClasses['card']} */ ;
+/** @type {__VLS_StyleScopedClasses['panel-card']} */ ;
+/** @type {__VLS_StyleScopedClasses['queue-card']} */ ;
 /** @type {__VLS_StyleScopedClasses['queue-header']} */ ;
 /** @type {__VLS_StyleScopedClasses['queue-list']} */ ;
 /** @type {__VLS_StyleScopedClasses['scroll-list']} */ ;
+/** @type {__VLS_StyleScopedClasses['queue-scroll-list']} */ ;
 /** @type {__VLS_StyleScopedClasses['queue-item']} */ ;
 /** @type {__VLS_StyleScopedClasses['queue-left']} */ ;
 /** @type {__VLS_StyleScopedClasses['index']} */ ;
 /** @type {__VLS_StyleScopedClasses['mini-cover']} */ ;
+/** @type {__VLS_StyleScopedClasses['queue-meta']} */ ;
 /** @type {__VLS_StyleScopedClasses['song-title']} */ ;
 /** @type {__VLS_StyleScopedClasses['song-sub']} */ ;
 /** @type {__VLS_StyleScopedClasses['queue-action']} */ ;
@@ -153,16 +119,11 @@ else {
 /** @type {__VLS_StyleScopedClasses['playing-bars']} */ ;
 /** @type {__VLS_StyleScopedClasses['btn']} */ ;
 /** @type {__VLS_StyleScopedClasses['queue-play-btn']} */ ;
-/** @type {__VLS_StyleScopedClasses['list-footnote']} */ ;
 /** @type {__VLS_StyleScopedClasses['empty']} */ ;
 var __VLS_dollars;
 const __VLS_self = (await import('vue')).defineComponent({
     setup() {
-        return {
-            listRef: listRef,
-            visibleQueue: visibleQueue,
-            onListScroll: onListScroll,
-        };
+        return {};
     },
     __typeEmits: {},
     __typeProps: {},

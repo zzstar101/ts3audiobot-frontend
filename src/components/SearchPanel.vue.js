@@ -161,7 +161,7 @@ const __VLS_ctx = {};
 let __VLS_components;
 let __VLS_directives;
 __VLS_asFunctionalElement(__VLS_intrinsicElements.section, __VLS_intrinsicElements.section)({
-    ...{ class: "card" },
+    ...{ class: "card panel-card search-card" },
 });
 __VLS_asFunctionalElement(__VLS_intrinsicElements.h2, __VLS_intrinsicElements.h2)({});
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -198,7 +198,7 @@ if (__VLS_ctx.results.length) {
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ onScroll: (__VLS_ctx.onListScroll) },
     ref: "listRef",
-    ...{ class: "result-list scroll-list" },
+    ...{ class: "result-list scroll-list result-scroll-list" },
 });
 /** @type {typeof __VLS_ctx.listRef} */ ;
 for (const [song, index] of __VLS_getVForSourceType((__VLS_ctx.results))) {
@@ -244,6 +244,8 @@ if (!__VLS_ctx.results.length) {
     (__VLS_ctx.emptyText);
 }
 /** @type {__VLS_StyleScopedClasses['card']} */ ;
+/** @type {__VLS_StyleScopedClasses['panel-card']} */ ;
+/** @type {__VLS_StyleScopedClasses['search-card']} */ ;
 /** @type {__VLS_StyleScopedClasses['result-header']} */ ;
 /** @type {__VLS_StyleScopedClasses['search-row']} */ ;
 /** @type {__VLS_StyleScopedClasses['btn']} */ ;
@@ -252,6 +254,7 @@ if (!__VLS_ctx.results.length) {
 /** @type {__VLS_StyleScopedClasses['result-header']} */ ;
 /** @type {__VLS_StyleScopedClasses['result-list']} */ ;
 /** @type {__VLS_StyleScopedClasses['scroll-list']} */ ;
+/** @type {__VLS_StyleScopedClasses['result-scroll-list']} */ ;
 /** @type {__VLS_StyleScopedClasses['song-card']} */ ;
 /** @type {__VLS_StyleScopedClasses['song-cover']} */ ;
 /** @type {__VLS_StyleScopedClasses['song-meta']} */ ;
