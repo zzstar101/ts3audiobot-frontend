@@ -1,0 +1,1 @@
+{"root":["./src/apiconfig.ts","./src/auth.ts","./src/main.ts","./src/pluginbridge.ts","./src/qrlogin.ts","./src/robotsync.ts","./src/types.ts","./src/app.vue","./src/components/loginpanel.vue","./src/components/playerpanel.vue","./src/components/queuepanel.vue","./src/components/searchpanel.vue"],"version":"5.9.3"}
