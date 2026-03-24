@@ -1,7 +1,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import LoginPanel from './components/LoginPanel.vue';
 import PlayerPanel from './components/PlayerPanel.vue';
-import { enqueueSongToPlugin, fetchVolumeFromPlugin, fetchQueueFromPlugin, nextSongByPlugin, pauseSongByPlugin, playQueueIndexByPlugin, removeQueueIndexByPlugin, playSongResumeByPlugin, seekSongByPlugin, setVolumeByPlugin, previousSongByPlugin } from './pluginBridge';
+import { enqueueSongToPlugin, fetchVolumeFromPlugin, fetchQueueFromPlugin, nextSongByPlugin, pauseSongByPlugin, playQueueIndexByPlugin, removeQueueIndexByPlugin, playSongResumeByPlugin, PLAY_MODE_LABELS, seekSongByPlugin, setPlayModeByPlugin, setVolumeByPlugin, previousSongByPlugin } from './pluginBridge';
 import QueuePanel from './components/QueuePanel.vue';
 import { fetchRobotSyncState } from './robotSync';
 import SearchPanel from './components/SearchPanel.vue';
@@ -12,6 +12,10 @@ const progressSec = ref(0);
 const volume = ref(70);
 const robotSong = ref(null);
 const pluginStatus = ref('待同步');
+const playMode = ref(1);
+const playType = ref(null);
+const modeName = ref(PLAY_MODE_LABELS[1]);
+const isModeBusy = ref(false);
 const pausedProgressSnapshotSec = ref(null);
 let syncTimer;
 let progressTimer;
@@ -41,6 +45,11 @@ async function refreshQueueState() {
     const state = await fetchQueueFromPlugin(100);
     queue.value = state.queue;
     currentIndex.value = state.currentIndex;
+    if (state.playMode) {
+        playMode.value = state.playMode;
+        modeName.value = state.modeName || PLAY_MODE_LABELS[state.playMode];
+    }
+    playType.value = state.playType;
 }
 async function refreshQueueStateUntilSong(song, prevQueueLength, maxRetry = 6) {
     for (let attempt = 0; attempt < maxRetry; attempt++) {
@@ -254,6 +263,36 @@ async function setVolume(target) {
         pluginStatus.value = `同步失败：${msg}`;
     }
 }
+function getNextPlayMode(mode) {
+    return mode === 4 ? 1 : (mode + 1);
+}
+async function cyclePlayMode() {
+    if (isModeBusy.value)
+        return;
+    if (playType.value === 1) {
+        pluginStatus.value = 'FM模式下不可切换播放模式';
+        return;
+    }
+    const prevMode = playMode.value;
+    const nextMode = getNextPlayMode(prevMode);
+    isModeBusy.value = true;
+    playMode.value = nextMode;
+    modeName.value = PLAY_MODE_LABELS[nextMode];
+    try {
+        await setPlayModeByPlugin(nextMode);
+        await refreshQueueState();
+        pluginStatus.value = `已切换：${modeName.value}`;
+    }
+    catch (error) {
+        playMode.value = prevMode;
+        modeName.value = PLAY_MODE_LABELS[prevMode];
+        const msg = error instanceof Error ? error.message : '未知错误';
+        pluginStatus.value = `同步失败：${msg}`;
+    }
+    finally {
+        isModeBusy.value = false;
+    }
+}
 onMounted(() => {
     syncRobotState();
     fetchVolumeFromPlugin().then((value) => {
@@ -314,10 +353,14 @@ const __VLS_3 = __VLS_asFunctionalComponent(PlayerPanel, new PlayerPanel({
     ...{ 'onToggle': {} },
     ...{ 'onSeek': {} },
     ...{ 'onVolume': {} },
+    ...{ 'onModeCycle': {} },
     currentSong: (__VLS_ctx.currentSong),
     isPlaying: (__VLS_ctx.isPlaying),
     progressSec: (__VLS_ctx.progressSec),
     volume: (__VLS_ctx.volume),
+    playMode: (__VLS_ctx.playMode),
+    playType: (__VLS_ctx.playType),
+    modeBusy: (__VLS_ctx.isModeBusy),
 }));
 const __VLS_4 = __VLS_3({
     ...{ 'onNext': {} },
@@ -325,10 +368,14 @@ const __VLS_4 = __VLS_3({
     ...{ 'onToggle': {} },
     ...{ 'onSeek': {} },
     ...{ 'onVolume': {} },
+    ...{ 'onModeCycle': {} },
     currentSong: (__VLS_ctx.currentSong),
     isPlaying: (__VLS_ctx.isPlaying),
     progressSec: (__VLS_ctx.progressSec),
     volume: (__VLS_ctx.volume),
+    playMode: (__VLS_ctx.playMode),
+    playType: (__VLS_ctx.playType),
+    modeBusy: (__VLS_ctx.isModeBusy),
 }, ...__VLS_functionalComponentArgsRest(__VLS_3));
 let __VLS_6;
 let __VLS_7;
@@ -348,49 +395,52 @@ const __VLS_12 = {
 const __VLS_13 = {
     onVolume: (__VLS_ctx.setVolume)
 };
+const __VLS_14 = {
+    onModeCycle: (__VLS_ctx.cyclePlayMode)
+};
 var __VLS_5;
 __VLS_asFunctionalElement(__VLS_intrinsicElements.section, __VLS_intrinsicElements.section)({
     ...{ class: "grid" },
 });
 /** @type {[typeof SearchPanel, ]} */ ;
 // @ts-ignore
-const __VLS_14 = __VLS_asFunctionalComponent(SearchPanel, new SearchPanel({
+const __VLS_15 = __VLS_asFunctionalComponent(SearchPanel, new SearchPanel({
     ...{ 'onAdd': {} },
 }));
-const __VLS_15 = __VLS_14({
+const __VLS_16 = __VLS_15({
     ...{ 'onAdd': {} },
-}, ...__VLS_functionalComponentArgsRest(__VLS_14));
-let __VLS_17;
+}, ...__VLS_functionalComponentArgsRest(__VLS_15));
 let __VLS_18;
 let __VLS_19;
-const __VLS_20 = {
+let __VLS_20;
+const __VLS_21 = {
     onAdd: (__VLS_ctx.addToQueue)
 };
-var __VLS_16;
+var __VLS_17;
 /** @type {[typeof QueuePanel, ]} */ ;
 // @ts-ignore
-const __VLS_21 = __VLS_asFunctionalComponent(QueuePanel, new QueuePanel({
+const __VLS_22 = __VLS_asFunctionalComponent(QueuePanel, new QueuePanel({
     ...{ 'onPlayIndex': {} },
     ...{ 'onRemoveIndex': {} },
     queue: (__VLS_ctx.queue),
     currentIndex: (__VLS_ctx.currentIndex),
 }));
-const __VLS_22 = __VLS_21({
+const __VLS_23 = __VLS_22({
     ...{ 'onPlayIndex': {} },
     ...{ 'onRemoveIndex': {} },
     queue: (__VLS_ctx.queue),
     currentIndex: (__VLS_ctx.currentIndex),
-}, ...__VLS_functionalComponentArgsRest(__VLS_21));
-let __VLS_24;
+}, ...__VLS_functionalComponentArgsRest(__VLS_22));
 let __VLS_25;
 let __VLS_26;
-const __VLS_27 = {
+let __VLS_27;
+const __VLS_28 = {
     onPlayIndex: (__VLS_ctx.playByIndex)
 };
-const __VLS_28 = {
+const __VLS_29 = {
     onRemoveIndex: (__VLS_ctx.removeByIndex)
 };
-var __VLS_23;
+var __VLS_24;
 /** @type {__VLS_StyleScopedClasses['container']} */ ;
 /** @type {__VLS_StyleScopedClasses['topbar']} */ ;
 /** @type {__VLS_StyleScopedClasses['topbar-right']} */ ;
@@ -411,6 +461,9 @@ const __VLS_self = (await import('vue')).defineComponent({
             progressSec: progressSec,
             volume: volume,
             pluginStatus: pluginStatus,
+            playMode: playMode,
+            playType: playType,
+            isModeBusy: isModeBusy,
             currentSong: currentSong,
             addToQueue: addToQueue,
             playByIndex: playByIndex,
@@ -420,6 +473,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             togglePlay: togglePlay,
             seekTo: seekTo,
             setVolume: setVolume,
+            cyclePlayMode: cyclePlayMode,
         };
     },
 });

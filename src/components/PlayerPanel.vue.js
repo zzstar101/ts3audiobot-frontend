@@ -1,4 +1,5 @@
 import { computed, nextTick, ref, watch } from 'vue';
+import { ListOrdered, Pause, Play, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, Volume2 } from 'lucide-vue-next';
 import { MUSIC_API_BASE } from '../apiConfig';
 import { withAuthUrl } from '../auth';
 const props = defineProps();
@@ -23,6 +24,27 @@ const panelBgStyle = computed(() => {
         backgroundSize: 'cover',
         backgroundPosition: 'center'
     };
+});
+const modeIconMap = {
+    1: ListOrdered,
+    2: Repeat1,
+    3: Repeat,
+    4: Shuffle
+};
+const modeFullTextMap = {
+    1: '顺序播放',
+    2: '单曲循环',
+    3: '顺序循环',
+    4: '随机播放'
+};
+const modeDisabled = computed(() => props.modeBusy || props.playType === 1);
+const modeIcon = computed(() => modeIconMap[props.playMode] ?? ListOrdered);
+const modeHint = computed(() => {
+    if (props.playType === 1)
+        return 'FM 模式不可切换播放模式';
+    if (props.modeBusy)
+        return '播放模式切换中...';
+    return `当前：${modeFullTextMap[props.playMode]}`;
 });
 function formatSec(sec) {
     const s = Math.max(0, Math.floor(sec));
@@ -330,11 +352,52 @@ if (__VLS_ctx.currentSong) {
         ...{ onClick: (...[$event]) => {
                 if (!(__VLS_ctx.currentSong))
                     return;
+                __VLS_ctx.emit('modeCycle');
+            } },
+        ...{ class: "icon-btn mode-btn" },
+        ...{ class: ({ 'is-disabled': __VLS_ctx.modeDisabled, 'is-active': !__VLS_ctx.modeDisabled }) },
+        disabled: (__VLS_ctx.modeDisabled),
+        title: (__VLS_ctx.modeHint),
+        'aria-label': "切换播放模式",
+    });
+    const __VLS_0 = ((__VLS_ctx.modeIcon));
+    // @ts-ignore
+    const __VLS_1 = __VLS_asFunctionalComponent(__VLS_0, new __VLS_0({
+        ...{ class: "icon-svg" },
+        size: (18),
+        strokeWidth: (2.2),
+        'aria-hidden': "true",
+    }));
+    const __VLS_2 = __VLS_1({
+        ...{ class: "icon-svg" },
+        size: (18),
+        strokeWidth: (2.2),
+        'aria-hidden': "true",
+    }, ...__VLS_functionalComponentArgsRest(__VLS_1));
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+        ...{ onClick: (...[$event]) => {
+                if (!(__VLS_ctx.currentSong))
+                    return;
                 __VLS_ctx.$emit('prev');
             } },
         ...{ class: "icon-btn" },
         'aria-label': "上一首",
     });
+    const __VLS_4 = {}.SkipBack;
+    /** @type {[typeof __VLS_components.SkipBack, ]} */ ;
+    // @ts-ignore
+    const __VLS_5 = __VLS_asFunctionalComponent(__VLS_4, new __VLS_4({
+        ...{ class: "icon-svg" },
+        size: (18),
+        strokeWidth: (2.2),
+        'aria-hidden': "true",
+    }));
+    const __VLS_6 = __VLS_5({
+        ...{ class: "icon-svg" },
+        size: (18),
+        strokeWidth: (2.2),
+        'aria-hidden': "true",
+    }, ...__VLS_functionalComponentArgsRest(__VLS_5));
     __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
         ...{ onClick: (...[$event]) => {
                 if (!(__VLS_ctx.currentSong))
@@ -344,7 +407,40 @@ if (__VLS_ctx.currentSong) {
         ...{ class: "icon-btn play-main" },
         'aria-label': "播放或暂停",
     });
-    (__VLS_ctx.isPlaying ? '⏸' : '▶');
+    if (__VLS_ctx.isPlaying) {
+        const __VLS_8 = {}.Pause;
+        /** @type {[typeof __VLS_components.Pause, ]} */ ;
+        // @ts-ignore
+        const __VLS_9 = __VLS_asFunctionalComponent(__VLS_8, new __VLS_8({
+            ...{ class: "icon-svg" },
+            size: (20),
+            strokeWidth: (2.4),
+            'aria-hidden': "true",
+        }));
+        const __VLS_10 = __VLS_9({
+            ...{ class: "icon-svg" },
+            size: (20),
+            strokeWidth: (2.4),
+            'aria-hidden': "true",
+        }, ...__VLS_functionalComponentArgsRest(__VLS_9));
+    }
+    else {
+        const __VLS_12 = {}.Play;
+        /** @type {[typeof __VLS_components.Play, ]} */ ;
+        // @ts-ignore
+        const __VLS_13 = __VLS_asFunctionalComponent(__VLS_12, new __VLS_12({
+            ...{ class: "icon-svg" },
+            size: (20),
+            strokeWidth: (2.4),
+            'aria-hidden': "true",
+        }));
+        const __VLS_14 = __VLS_13({
+            ...{ class: "icon-svg" },
+            size: (20),
+            strokeWidth: (2.4),
+            'aria-hidden': "true",
+        }, ...__VLS_functionalComponentArgsRest(__VLS_13));
+    }
     __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
         ...{ onClick: (...[$event]) => {
                 if (!(__VLS_ctx.currentSong))
@@ -354,12 +450,42 @@ if (__VLS_ctx.currentSong) {
         ...{ class: "icon-btn" },
         'aria-label': "下一首",
     });
+    const __VLS_16 = {}.SkipForward;
+    /** @type {[typeof __VLS_components.SkipForward, ]} */ ;
+    // @ts-ignore
+    const __VLS_17 = __VLS_asFunctionalComponent(__VLS_16, new __VLS_16({
+        ...{ class: "icon-svg" },
+        size: (18),
+        strokeWidth: (2.2),
+        'aria-hidden': "true",
+    }));
+    const __VLS_18 = __VLS_17({
+        ...{ class: "icon-svg" },
+        size: (18),
+        strokeWidth: (2.2),
+        'aria-hidden': "true",
+    }, ...__VLS_functionalComponentArgsRest(__VLS_17));
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "volume-row" },
     });
     __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
         ...{ class: "volume-icon" },
     });
+    const __VLS_20 = {}.Volume2;
+    /** @type {[typeof __VLS_components.Volume2, ]} */ ;
+    // @ts-ignore
+    const __VLS_21 = __VLS_asFunctionalComponent(__VLS_20, new __VLS_20({
+        ...{ class: "icon-svg" },
+        size: (16),
+        strokeWidth: (2.1),
+        'aria-hidden': "true",
+    }));
+    const __VLS_22 = __VLS_21({
+        ...{ class: "icon-svg" },
+        size: (16),
+        strokeWidth: (2.1),
+        'aria-hidden': "true",
+    }, ...__VLS_functionalComponentArgsRest(__VLS_21));
     __VLS_asFunctionalElement(__VLS_intrinsicElements.input)({
         ...{ onInput: (__VLS_ctx.onVolumeChange) },
         ...{ class: "slider music-slider volume-slider" },
@@ -406,11 +532,19 @@ else {
 /** @type {__VLS_StyleScopedClasses['controls']} */ ;
 /** @type {__VLS_StyleScopedClasses['controls-center']} */ ;
 /** @type {__VLS_StyleScopedClasses['icon-btn']} */ ;
+/** @type {__VLS_StyleScopedClasses['mode-btn']} */ ;
+/** @type {__VLS_StyleScopedClasses['icon-svg']} */ ;
+/** @type {__VLS_StyleScopedClasses['icon-btn']} */ ;
+/** @type {__VLS_StyleScopedClasses['icon-svg']} */ ;
 /** @type {__VLS_StyleScopedClasses['icon-btn']} */ ;
 /** @type {__VLS_StyleScopedClasses['play-main']} */ ;
+/** @type {__VLS_StyleScopedClasses['icon-svg']} */ ;
+/** @type {__VLS_StyleScopedClasses['icon-svg']} */ ;
 /** @type {__VLS_StyleScopedClasses['icon-btn']} */ ;
+/** @type {__VLS_StyleScopedClasses['icon-svg']} */ ;
 /** @type {__VLS_StyleScopedClasses['volume-row']} */ ;
 /** @type {__VLS_StyleScopedClasses['volume-icon']} */ ;
+/** @type {__VLS_StyleScopedClasses['icon-svg']} */ ;
 /** @type {__VLS_StyleScopedClasses['slider']} */ ;
 /** @type {__VLS_StyleScopedClasses['music-slider']} */ ;
 /** @type {__VLS_StyleScopedClasses['volume-slider']} */ ;
@@ -419,6 +553,12 @@ var __VLS_dollars;
 const __VLS_self = (await import('vue')).defineComponent({
     setup() {
         return {
+            Pause: Pause,
+            Play: Play,
+            SkipBack: SkipBack,
+            SkipForward: SkipForward,
+            Volume2: Volume2,
+            emit: emit,
             showTranslation: showTranslation,
             showRomanization: showRomanization,
             lyricLoading: lyricLoading,
@@ -426,6 +566,9 @@ const __VLS_self = (await import('vue')).defineComponent({
             lyricLines: lyricLines,
             lyricListRef: lyricListRef,
             panelBgStyle: panelBgStyle,
+            modeDisabled: modeDisabled,
+            modeIcon: modeIcon,
+            modeHint: modeHint,
             formatSec: formatSec,
             providerText: providerText,
             displayProgressSec: displayProgressSec,

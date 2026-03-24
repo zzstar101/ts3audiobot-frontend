@@ -19,11 +19,15 @@
       :is-playing="isPlaying"
       :progress-sec="progressSec"
       :volume="volume"
+      :play-mode="playMode"
+      :play-type="playType"
+      :mode-busy="isModeBusy"
       @next="nextSong"
       @prev="prevSong"
       @toggle="togglePlay"
       @seek="seekTo"
       @volume="setVolume"
+      @mode-cycle="cyclePlayMode"
     />
 
     <section class="grid">
@@ -47,9 +51,13 @@ import {
   removeQueueIndexByPlugin,
   playSongByPlugin,
   playSongResumeByPlugin,
+  PLAY_MODE_LABELS,
   seekSongByPlugin,
+  setPlayModeByPlugin,
   setVolumeByPlugin,
-  previousSongByPlugin
+  previousSongByPlugin,
+  type PlayMode,
+  type PlayType
 } from './pluginBridge'
 import QueuePanel from './components/QueuePanel.vue'
 import { fetchRobotSyncState } from './robotSync'
@@ -63,6 +71,10 @@ const progressSec = ref(0)
 const volume = ref(70)
 const robotSong = ref<SongItem | null>(null)
 const pluginStatus = ref('待同步')
+const playMode = ref<PlayMode>(1)
+const playType = ref<PlayType | null>(null)
+const modeName = ref(PLAY_MODE_LABELS[1])
+const isModeBusy = ref(false)
 const pausedProgressSnapshotSec = ref<number | null>(null)
 let syncTimer: number | undefined
 let progressTimer: number | undefined
@@ -92,6 +104,11 @@ async function refreshQueueState() {
   const state = await fetchQueueFromPlugin(100)
   queue.value = state.queue
   currentIndex.value = state.currentIndex
+  if (state.playMode) {
+    playMode.value = state.playMode
+    modeName.value = state.modeName || PLAY_MODE_LABELS[state.playMode]
+  }
+  playType.value = state.playType
 }
 
 async function refreshQueueStateUntilSong(song: SongItem, prevQueueLength: number, maxRetry = 6): Promise<boolean> {
@@ -304,6 +321,38 @@ async function setVolume(target: number) {
   } catch (error) {
     const msg = error instanceof Error ? error.message : '未知错误'
     pluginStatus.value = `同步失败：${msg}`
+  }
+}
+
+function getNextPlayMode(mode: PlayMode): PlayMode {
+  return mode === 4 ? 1 : ((mode + 1) as PlayMode)
+}
+
+async function cyclePlayMode() {
+  if (isModeBusy.value) return
+  if (playType.value === 1) {
+    pluginStatus.value = 'FM模式下不可切换播放模式'
+    return
+  }
+
+  const prevMode = playMode.value
+  const nextMode = getNextPlayMode(prevMode)
+
+  isModeBusy.value = true
+  playMode.value = nextMode
+  modeName.value = PLAY_MODE_LABELS[nextMode]
+
+  try {
+    await setPlayModeByPlugin(nextMode)
+    await refreshQueueState()
+    pluginStatus.value = `已切换：${modeName.value}`
+  } catch (error) {
+    playMode.value = prevMode
+    modeName.value = PLAY_MODE_LABELS[prevMode]
+    const msg = error instanceof Error ? error.message : '未知错误'
+    pluginStatus.value = `同步失败：${msg}`
+  } finally {
+    isModeBusy.value = false
   }
 }
 

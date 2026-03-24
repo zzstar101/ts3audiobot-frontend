@@ -63,15 +63,30 @@
 
         <div class="bottom-controls">
           <div class="controls controls-center">
-            <button class="icon-btn" @click="$emit('prev')" aria-label="上一首">⏮</button>
-            <button class="icon-btn play-main" @click="$emit('toggle')" aria-label="播放或暂停">
-              {{ isPlaying ? '⏸' : '▶' }}
+            <button
+              class="icon-btn mode-btn"
+              :class="{ 'is-disabled': modeDisabled, 'is-active': !modeDisabled }"
+              :disabled="modeDisabled"
+              @click="emit('modeCycle')"
+              :title="modeHint"
+              aria-label="切换播放模式"
+            >
+              <component :is="modeIcon" class="icon-svg" :size="18" :stroke-width="2.2" aria-hidden="true" />
             </button>
-            <button class="icon-btn" @click="$emit('next')" aria-label="下一首">⏭</button>
+            <button class="icon-btn" @click="$emit('prev')" aria-label="上一首">
+              <SkipBack class="icon-svg" :size="18" :stroke-width="2.2" aria-hidden="true" />
+            </button>
+            <button class="icon-btn play-main" @click="$emit('toggle')" aria-label="播放或暂停">
+              <Pause v-if="isPlaying" class="icon-svg" :size="20" :stroke-width="2.4" aria-hidden="true" />
+              <Play v-else class="icon-svg" :size="20" :stroke-width="2.4" aria-hidden="true" />
+            </button>
+            <button class="icon-btn" @click="$emit('next')" aria-label="下一首">
+              <SkipForward class="icon-svg" :size="18" :stroke-width="2.2" aria-hidden="true" />
+            </button>
           </div>
 
           <div class="volume-row">
-            <span class="volume-icon">🔊</span>
+            <span class="volume-icon"><Volume2 class="icon-svg" :size="16" :stroke-width="2.1" aria-hidden="true" /></span>
             <input
               class="slider music-slider volume-slider"
               type="range"
@@ -90,6 +105,17 @@
 
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
+import {
+  ListOrdered,
+  Pause,
+  Play,
+  Repeat,
+  Repeat1,
+  Shuffle,
+  SkipBack,
+  SkipForward,
+  Volume2
+} from 'lucide-vue-next'
 import { MUSIC_API_BASE } from '../apiConfig'
 import { withAuthUrl } from '../auth'
 import type { SongItem } from '../types'
@@ -99,6 +125,9 @@ const props = defineProps<{
   isPlaying: boolean
   progressSec: number
   volume: number
+  playMode: 1 | 2 | 3 | 4
+  playType: 0 | 1 | null
+  modeBusy: boolean
 }>()
 
 const emit = defineEmits<{
@@ -107,6 +136,7 @@ const emit = defineEmits<{
   prev: []
   toggle: []
   volume: [number]
+  modeCycle: []
 }>()
 
 interface LyricLine {
@@ -137,6 +167,30 @@ const panelBgStyle = computed(() => {
     backgroundSize: 'cover',
     backgroundPosition: 'center'
   }
+})
+
+const modeIconMap: Record<1 | 2 | 3 | 4, any> = {
+  1: ListOrdered,
+  2: Repeat1,
+  3: Repeat,
+  4: Shuffle
+}
+
+const modeFullTextMap: Record<1 | 2 | 3 | 4, string> = {
+  1: '顺序播放',
+  2: '单曲循环',
+  3: '顺序循环',
+  4: '随机播放'
+}
+
+const modeDisabled = computed(() => props.modeBusy || props.playType === 1)
+
+const modeIcon = computed(() => modeIconMap[props.playMode] ?? ListOrdered)
+
+const modeHint = computed(() => {
+  if (props.playType === 1) return 'FM 模式不可切换播放模式'
+  if (props.modeBusy) return '播放模式切换中...'
+  return `当前：${modeFullTextMap[props.playMode]}`
 })
 
 function formatSec(sec: number): string {

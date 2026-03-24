@@ -5,6 +5,12 @@ const BOT_ID = '0';
 const NETEASE_CMD = 'wyy';
 const NETEASE_ADD_SUBCMD = 'add';
 const NETEASE_PLAY_SUBCMD = 'play';
+export const PLAY_MODE_LABELS = {
+    1: '顺序播放',
+    2: '单曲循环',
+    3: '顺序循环',
+    4: '随机播放'
+};
 const enqueueHintByLink = new Map();
 const ENQUEUE_HINT_STORAGE_KEY = 'jukebox.enqueueHints.v1';
 function loadEnqueueHintsFromStorage() {
@@ -239,8 +245,8 @@ function mapQueueItemToSong(item, index) {
     };
 }
 function mapWqQueueItemToSong(item, index) {
-    const title = String(item?.title ?? '').trim();
-    const artist = String(item?.artist ?? '').trim();
+    const title = String(item?.title ?? item?.name ?? '').trim();
+    const artist = String(item?.artist ?? item?.author ?? '').trim();
     const id = String(item?.id ?? '').trim();
     const link = String(item?.link ?? '').trim();
     const songId = id || parseSongId(link);
@@ -253,6 +259,29 @@ function mapWqQueueItemToSong(item, index) {
         album: '队列歌曲',
         durationSec: 1
     };
+}
+function normalizePlayMode(raw) {
+    const value = Number(raw);
+    if (!Number.isFinite(value))
+        return null;
+    const mode = Math.floor(value);
+    if (mode < 1 || mode > 4)
+        return 1;
+    return mode;
+}
+function normalizePlayType(raw) {
+    const value = Number(raw);
+    if (!Number.isFinite(value))
+        return null;
+    const kind = Math.floor(value);
+    if (kind !== 0 && kind !== 1)
+        return null;
+    return kind;
+}
+function getPlayModeLabel(mode) {
+    if (!mode)
+        return '';
+    return PLAY_MODE_LABELS[mode];
 }
 async function fetchNeteaseSongDetails(songIds) {
     const uniqIds = [...new Set(songIds.filter(Boolean))];
@@ -350,11 +379,19 @@ export async function fetchQueueFromPlugin(limit = 100) {
                     durationSec: detail.durationSec
                 };
             });
-            const oneBased = Number(payload?.play_index ?? 1);
+            const oneBased = Number(payload?.play_index ?? payload?.playbackIndex ?? 1);
             const currentIndex = Number.isFinite(oneBased)
                 ? Math.min(Math.max(0, oneBased - 1), Math.max(0, queue.length - 1))
                 : 0;
-            return { queue, currentIndex };
+            const playMode = normalizePlayMode(payload?.play_mode);
+            const playType = normalizePlayType(payload?.play_type);
+            return {
+                queue,
+                currentIndex,
+                playMode,
+                playType,
+                modeName: String(payload?.mode_name ?? getPlayModeLabel(playMode))
+            };
         }
     }
     catch {
@@ -386,7 +423,13 @@ export async function fetchQueueFromPlugin(limit = 100) {
     const currentIndex = Number.isFinite(playbackIndex)
         ? Math.min(Math.max(0, playbackIndex), Math.max(0, queue.length - 1))
         : 0;
-    return { queue, currentIndex };
+    return {
+        queue,
+        currentIndex,
+        playMode: null,
+        playType: null,
+        modeName: ''
+    };
 }
 export async function nextSongByPlugin() {
     try {
@@ -403,6 +446,9 @@ export async function previousSongByPlugin() {
     catch {
         await execBotCommand(['previous']);
     }
+}
+export async function setPlayModeByPlugin(mode) {
+    await execBotCommand(['wq', 'mode', String(mode)]);
 }
 export async function setVolumeByPlugin(volume) {
     const normalized = Math.max(0, Math.min(100, Math.round(volume)));

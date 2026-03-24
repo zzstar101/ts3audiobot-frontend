@@ -30,11 +30,36 @@ interface NeteaseSongDetail {
   durationSec: number
 }
 
+export type PlayMode = 1 | 2 | 3 | 4
+export type PlayType = 0 | 1
+
+export interface PluginQueueState {
+  queue: SongItem[]
+  currentIndex: number
+  playMode: PlayMode | null
+  playType: PlayType | null
+  modeName: string
+}
+
+export const PLAY_MODE_LABELS: Record<PlayMode, string> = {
+  1: '顺序播放',
+  2: '单曲循环',
+  3: '顺序循环',
+  4: '随机播放'
+}
+
 interface WqQueuePayload {
+  playbackIndex?: number
   play_index?: number
+  play_mode?: number
+  play_type?: number
+  mode_name?: string
   items?: Array<{
     index?: number
     id?: string
+    music_type?: string
+    name?: string
+    author?: string
     title?: string
     artist?: string
     link?: string
@@ -287,8 +312,8 @@ function mapQueueItemToSong(item: BotQueueItem, index: number): SongItem {
 }
 
 function mapWqQueueItemToSong(item: NonNullable<WqQueuePayload['items']>[number], index: number): SongItem {
-  const title = String(item?.title ?? '').trim()
-  const artist = String(item?.artist ?? '').trim()
+  const title = String(item?.title ?? item?.name ?? '').trim()
+  const artist = String(item?.artist ?? item?.author ?? '').trim()
   const id = String(item?.id ?? '').trim()
   const link = String(item?.link ?? '').trim()
   const songId = id || parseSongId(link)
@@ -301,6 +326,27 @@ function mapWqQueueItemToSong(item: NonNullable<WqQueuePayload['items']>[number]
     album: '队列歌曲',
     durationSec: 1
   }
+}
+
+function normalizePlayMode(raw: unknown): PlayMode | null {
+  const value = Number(raw)
+  if (!Number.isFinite(value)) return null
+  const mode = Math.floor(value)
+  if (mode < 1 || mode > 4) return 1
+  return mode as PlayMode
+}
+
+function normalizePlayType(raw: unknown): PlayType | null {
+  const value = Number(raw)
+  if (!Number.isFinite(value)) return null
+  const kind = Math.floor(value)
+  if (kind !== 0 && kind !== 1) return null
+  return kind as PlayType
+}
+
+function getPlayModeLabel(mode: PlayMode | null): string {
+  if (!mode) return ''
+  return PLAY_MODE_LABELS[mode]
 }
 
 async function fetchNeteaseSongDetails(songIds: string[]): Promise<Map<string, NeteaseSongDetail>> {
@@ -357,7 +403,7 @@ async function fetchPlayableNeteaseUrl(songId: string): Promise<string> {
   return ''
 }
 
-export async function fetchQueueFromPlugin(limit = 100): Promise<{ queue: SongItem[]; currentIndex: number }> {
+export async function fetchQueueFromPlugin(limit = 100): Promise<PluginQueueState> {
   try {
     const rawPayload = await execBotCommand(['wq', 'queue']) as WqQueuePayload | { Value?: string } | string | null
     let payload: WqQueuePayload | null = null
@@ -397,11 +443,19 @@ export async function fetchQueueFromPlugin(limit = 100): Promise<{ queue: SongIt
           durationSec: detail.durationSec
         }
       })
-      const oneBased = Number(payload?.play_index ?? 1)
+      const oneBased = Number(payload?.play_index ?? payload?.playbackIndex ?? 1)
       const currentIndex = Number.isFinite(oneBased)
         ? Math.min(Math.max(0, oneBased - 1), Math.max(0, queue.length - 1))
         : 0
-      return { queue, currentIndex }
+      const playMode = normalizePlayMode(payload?.play_mode)
+      const playType = normalizePlayType(payload?.play_type)
+      return {
+        queue,
+        currentIndex,
+        playMode,
+        playType,
+        modeName: String(payload?.mode_name ?? getPlayModeLabel(playMode))
+      }
     }
   } catch {
     // fallback to legacy info endpoints
@@ -434,7 +488,13 @@ export async function fetchQueueFromPlugin(limit = 100): Promise<{ queue: SongIt
   const currentIndex = Number.isFinite(playbackIndex)
     ? Math.min(Math.max(0, playbackIndex), Math.max(0, queue.length - 1))
     : 0
-  return { queue, currentIndex }
+  return {
+    queue,
+    currentIndex,
+    playMode: null,
+    playType: null,
+    modeName: ''
+  }
 }
 
 export async function nextSongByPlugin(): Promise<void> {
@@ -451,6 +511,10 @@ export async function previousSongByPlugin(): Promise<void> {
   } catch {
     await execBotCommand(['previous'])
   }
+}
+
+export async function setPlayModeByPlugin(mode: PlayMode): Promise<void> {
+  await execBotCommand(['wq', 'mode', String(mode)])
 }
 
 export async function setVolumeByPlugin(volume: number): Promise<void> {

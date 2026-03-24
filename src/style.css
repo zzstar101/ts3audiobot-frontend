@@ -296,6 +296,36 @@ body {
   cursor: pointer;
 }
 
+.icon-btn .icon-svg {
+  display: block;
+  margin: 0 auto;
+}
+
+.mode-btn {
+  width: 38px;
+  min-width: 38px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-color: #3b82f6;
+  color: #bfdbfe;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.mode-btn.is-active {
+  background: rgba(37, 99, 235, 0.18);
+}
+
+.mode-btn.is-disabled {
+  border-color: #334155;
+  color: #64748b;
+  background: #0b1220;
+  cursor: not-allowed;
+}
+
 .play-main {
   width: 48px;
   height: 48px;
@@ -314,6 +344,9 @@ body {
 .volume-icon {
   color: #cbd5e1;
   font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .volume-slider {
