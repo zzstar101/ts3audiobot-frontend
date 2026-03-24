@@ -500,6 +500,22 @@ function onManualLyricPlay() {
   exitManualLyricScroll({ resumeAuto: true, syncAutoLine: false })
 }
 
+async function syncLyricViewportAfterLayoutChange() {
+  await nextTick()
+
+  if (isLyricManualScrollActive.value) {
+    scheduleManualLyricTargetUpdate()
+    armManualHideTimer()
+    return
+  }
+
+  const index = activeLyricIndex.value
+  if (index >= 0) {
+    lastScrolledLyricIndex.value = -1
+    void scrollLyricToIndex(index, true)
+  }
+}
+
 function resetLyricInteractionState() {
   isLyricManualScrollActive.value = false
   manualLyricIndex.value = -1
@@ -540,6 +556,10 @@ watch(hasRomanization, (enabled) => {
   if (!enabled) {
     showRomanization.value = false
   }
+})
+
+watch([showTranslation, showRomanization], () => {
+  void syncLyricViewportAfterLayoutChange()
 })
 
 onBeforeUnmount(() => {
