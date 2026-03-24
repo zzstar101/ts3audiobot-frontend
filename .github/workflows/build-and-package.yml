@@ -1,0 +1,42 @@
+name: Build And Package v1.03
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  RELEASE_VERSION: "1.03"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Package dist to zip
+        run: |
+          mkdir -p artifacts
+          zip -r "artifacts/jukebox-webui-v${RELEASE_VERSION}.zip" dist
+
+      - name: Upload zip artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: jukebox-webui-v${{ env.RELEASE_VERSION }}
+          path: artifacts/jukebox-webui-v${{ env.RELEASE_VERSION }}.zip
+          if-no-files-found: error
