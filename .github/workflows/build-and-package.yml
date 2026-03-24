@@ -1,4 +1,4 @@
-name: Build And Package v1.03
+name: Build And Package v1.04
 
 permissions:
   contents: write
@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 env:
-  RELEASE_VERSION: "1.03"
+  RELEASE_VERSION: "1.04"
 
 jobs:
   build:
@@ -42,6 +42,17 @@ jobs:
         with:
           tag: v${{ env.RELEASE_VERSION }}
           name: v${{ env.RELEASE_VERSION }}
+          body: |
+            ## TS6 点歌台 v1.04
+
+            发布说明：
+            - 本次版本基于分支合并提交 `da1c2b0`，合并到 `main` 时间为 2026-03-24 18:26:08 +0800。
+            - 修复：歌曲暂停较长时间后恢复播放会直接跳到下一首的问题。
+            - 修复：歌词翻译/音译切换时播放状态保持异常的问题。
+            - 新增：歌词滚动定位播放能力，并修复基线对齐表现。
+
+            构建产物：
+            - `jukebox-webui-v1.04.zip`（包含 `dist/`）。
           artifacts: artifacts/jukebox-webui-v${{ env.RELEASE_VERSION }}.zip
           allowUpdates: true
           artifactErrorsFailBuild: true
