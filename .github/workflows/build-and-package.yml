@@ -1,5 +1,8 @@
 name: Build And Package v1.03
 
+permissions:
+  contents: write
+
 on:
   push:
     branches:
@@ -34,9 +37,11 @@ jobs:
           mkdir -p artifacts
           zip -r "artifacts/jukebox-webui-v${RELEASE_VERSION}.zip" dist
 
-      - name: Upload zip artifact
-        uses: actions/upload-artifact@v4
+      - name: Publish zip to GitHub Release
+        uses: ncipollo/release-action@v1
         with:
-          name: jukebox-webui-v${{ env.RELEASE_VERSION }}
-          path: artifacts/jukebox-webui-v${{ env.RELEASE_VERSION }}.zip
-          if-no-files-found: error
+          tag: v${{ env.RELEASE_VERSION }}
+          name: v${{ env.RELEASE_VERSION }}
+          artifacts: artifacts/jukebox-webui-v${{ env.RELEASE_VERSION }}.zip
+          allowUpdates: true
+          artifactErrorsFailBuild: true
