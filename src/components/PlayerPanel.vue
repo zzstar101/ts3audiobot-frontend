@@ -28,18 +28,33 @@
             <span class="lyric-hint" v-else-if="lyricError">{{ lyricError }}</span>
           </div>
 
-          <div class="lyric-box" v-if="lyricLines.length">
-            <div class="lyric-list" ref="lyricListRef">
+          <div class="lyric-box" ref="lyricBoxRef" v-if="lyricLines.length">
+            <div class="lyric-list" ref="lyricListRef" @wheel.passive="onLyricWheel" @scroll.passive="onLyricScroll">
               <div
                 v-for="(line, index) in lyricLines"
                 :key="line.time + '-' + index"
                 :ref="(element) => setLyricLineRef(element as HTMLElement | null, index)"
                 class="lyric-line"
-                :class="{ active: index === activeLyricIndex }"
+                :class="{ active: index === highlightedLyricIndex }"
               >
                 <div class="lyric-main">{{ line.main }}</div>
                 <div class="lyric-extra" v-if="showTranslation && line.trans">{{ line.trans }}</div>
                 <div class="lyric-extra" v-if="showRomanization && line.roma">{{ line.roma }}</div>
+              </div>
+            </div>
+            <div v-if="isLyricManualScrollActive" class="lyric-position-overlay" aria-hidden="true">
+              <div class="lyric-position-dash"></div>
+              <div class="lyric-position-actions">
+                <span class="lyric-position-time">{{ manualLyricTimeLabel }}</span>
+                <button
+                  type="button"
+                  class="lyric-position-play"
+                  :disabled="manualLyricIndex < 0"
+                  @click="onManualLyricPlay"
+                  aria-label="定位到当前歌词时间并播放"
+                >
+                  <Play class="icon-svg" :size="14" :stroke-width="2.4" aria-hidden="true" />
+                </button>
               </div>
             </div>
           </div>
@@ -104,7 +119,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import {
   ListOrdered,
   Pause,
@@ -151,10 +166,16 @@ const showRomanization = ref(false)
 const lyricLoading = ref(false)
 const lyricError = ref('')
 const lyricLines = ref<LyricLine[]>([])
+const lyricBoxRef = ref<HTMLElement | null>(null)
 const lyricListRef = ref<HTMLElement | null>(null)
 const lyricLineRefs = ref<HTMLElement[]>([])
 const lastScrolledLyricIndex = ref(-1)
+const isLyricManualScrollActive = ref(false)
+const manualLyricIndex = ref(-1)
+const isAutoLyricFollowEnabled = ref(true)
 let lyricScrollRaf: number | null = null
+let manualLyricRaf: number | null = null
+let manualHideTimer: number | null = null
 const seekPreviewSec = ref<number | null>(null)
 const isSeeking = ref(false)
 
@@ -312,42 +333,186 @@ const activeLyricIndex = computed(() => {
   return index
 })
 
+const highlightedLyricIndex = computed(() => {
+  if (isLyricManualScrollActive.value) {
+    return manualLyricIndex.value
+  }
+  return activeLyricIndex.value
+})
+
+const manualLyricTimeLabel = computed(() => {
+  if (manualLyricIndex.value < 0) return '--:--'
+  const line = lyricLines.value[manualLyricIndex.value]
+  if (!line) return '--:--'
+  return formatSec(line.time)
+})
+
 const currentLyricLine = computed(() => {
   const idx = activeLyricIndex.value
   if (idx < 0) return null
   return lyricLines.value[idx]
 })
 
+function cancelLyricScrollRaf() {
+  if (lyricScrollRaf !== null) {
+    window.cancelAnimationFrame(lyricScrollRaf)
+    lyricScrollRaf = null
+  }
+}
+
+function cancelManualLyricRaf() {
+  if (manualLyricRaf !== null) {
+    window.cancelAnimationFrame(manualLyricRaf)
+    manualLyricRaf = null
+  }
+}
+
+function clearManualHideTimer() {
+  if (manualHideTimer !== null) {
+    window.clearTimeout(manualHideTimer)
+    manualHideTimer = null
+  }
+}
+
+function findClosestLyricIndexToCenter(): number {
+  const container = lyricListRef.value
+  if (!container || !lyricLineRefs.value.length) return -1
+
+  // Always align manual target calculation with the visual baseline host.
+  const baselineHost = lyricBoxRef.value ?? container
+  const hostRect = baselineHost.getBoundingClientRect()
+  const centerY = hostRect.top + hostRect.height / 2
+  let closestIndex = -1
+  let minDistance = Number.POSITIVE_INFINITY
+
+  for (let i = 0; i < lyricLineRefs.value.length; i++) {
+    const lineEl = lyricLineRefs.value[i]
+    if (!lineEl) continue
+    const rect = lineEl.getBoundingClientRect()
+    const lineCenterY = rect.top + rect.height / 2
+    const distance = Math.abs(lineCenterY - centerY)
+    if (distance < minDistance) {
+      minDistance = distance
+      closestIndex = i
+    }
+  }
+
+  return closestIndex
+}
+
+function updateManualLyricTarget() {
+  if (!isLyricManualScrollActive.value) return
+  const index = findClosestLyricIndexToCenter()
+  if (index >= 0) {
+    manualLyricIndex.value = index
+  }
+}
+
+function scheduleManualLyricTargetUpdate() {
+  cancelManualLyricRaf()
+  manualLyricRaf = window.requestAnimationFrame(() => {
+    manualLyricRaf = null
+    updateManualLyricTarget()
+  })
+}
+
+async function scrollLyricToIndex(index: number, force = false) {
+  if (index < 0) return
+  if (!force && index === lastScrolledLyricIndex.value) return
+  await nextTick()
+  const container = lyricListRef.value
+  const lineEl = lyricLineRefs.value[index]
+  if (!container || !lineEl) return
+
+  lastScrolledLyricIndex.value = index
+  cancelLyricScrollRaf()
+
+  lyricScrollRaf = window.requestAnimationFrame(() => {
+    lyricScrollRaf = null
+    const containerRect = container.getBoundingClientRect()
+    const lineRect = lineEl.getBoundingClientRect()
+    const delta = lineRect.top - containerRect.top - (container.clientHeight / 2 - lineEl.clientHeight / 2)
+    const target = Math.max(0, container.scrollTop + delta)
+    const distance = Math.abs(target - container.scrollTop)
+
+    if (distance < 8) return
+    container.scrollTo({
+      top: target,
+      behavior: distance > 72 ? 'smooth' : 'auto'
+    })
+  })
+}
+
+function exitManualLyricScroll(opts?: { resumeAuto?: boolean; syncAutoLine?: boolean }) {
+  const resumeAuto = opts?.resumeAuto ?? true
+  const syncAutoLine = opts?.syncAutoLine ?? true
+
+  isLyricManualScrollActive.value = false
+  manualLyricIndex.value = -1
+  clearManualHideTimer()
+  cancelManualLyricRaf()
+
+  if (!resumeAuto) return
+
+  isAutoLyricFollowEnabled.value = true
+  lastScrolledLyricIndex.value = -1
+
+  if (!syncAutoLine) return
+  const index = activeLyricIndex.value
+  if (index >= 0) {
+    void scrollLyricToIndex(index, true)
+  }
+}
+
+function armManualHideTimer() {
+  clearManualHideTimer()
+  manualHideTimer = window.setTimeout(() => {
+    exitManualLyricScroll({ resumeAuto: true, syncAutoLine: true })
+  }, 2000)
+}
+
+function enterManualLyricScroll() {
+  if (!lyricLines.value.length) return
+  if (!isLyricManualScrollActive.value) {
+    isLyricManualScrollActive.value = true
+    isAutoLyricFollowEnabled.value = false
+    const fallback = activeLyricIndex.value >= 0 ? activeLyricIndex.value : 0
+    manualLyricIndex.value = fallback
+  }
+  scheduleManualLyricTargetUpdate()
+  armManualHideTimer()
+}
+
+function onLyricWheel() {
+  enterManualLyricScroll()
+}
+
+function onLyricScroll() {
+  if (!isLyricManualScrollActive.value) return
+  scheduleManualLyricTargetUpdate()
+}
+
+function onManualLyricPlay() {
+  if (manualLyricIndex.value < 0) return
+  const line = lyricLines.value[manualLyricIndex.value]
+  if (!line) return
+  emit('seek', Math.floor(line.time))
+  exitManualLyricScroll({ resumeAuto: true, syncAutoLine: false })
+}
+
+function resetLyricInteractionState() {
+  isLyricManualScrollActive.value = false
+  manualLyricIndex.value = -1
+  isAutoLyricFollowEnabled.value = true
+  clearManualHideTimer()
+  cancelManualLyricRaf()
+}
+
 watch(
   activeLyricIndex,
   async (index) => {
-    if (index < 0) return
-    if (index === lastScrolledLyricIndex.value) return
-    await nextTick()
-    const container = lyricListRef.value
-    const lineEl = lyricLineRefs.value[index]
-    if (!container || !lineEl) return
-
-    lastScrolledLyricIndex.value = index
-    if (lyricScrollRaf !== null) {
-      window.cancelAnimationFrame(lyricScrollRaf)
-      lyricScrollRaf = null
-    }
-
-    lyricScrollRaf = window.requestAnimationFrame(() => {
-      lyricScrollRaf = null
-      const containerRect = container.getBoundingClientRect()
-      const lineRect = lineEl.getBoundingClientRect()
-      const delta = lineRect.top - containerRect.top - (container.clientHeight / 2 - lineEl.clientHeight / 2)
-      const target = Math.max(0, container.scrollTop + delta)
-      const distance = Math.abs(target - container.scrollTop)
-
-      if (distance < 8) return
-      container.scrollTo({
-        top: target,
-        behavior: distance > 72 ? 'smooth' : 'auto'
-      })
-    })
+    if (!isAutoLyricFollowEnabled.value) return
+    await scrollLyricToIndex(index)
   },
   { flush: 'post' }
 )
@@ -356,11 +521,9 @@ watch(
   () => `${props.currentSong?.provider ?? ''}:${props.currentSong?.id ?? ''}`,
   () => {
     const song = props.currentSong
+    resetLyricInteractionState()
     lastScrolledLyricIndex.value = -1
-    if (lyricScrollRaf !== null) {
-      window.cancelAnimationFrame(lyricScrollRaf)
-      lyricScrollRaf = null
-    }
+    cancelLyricScrollRaf()
     if (!song) {
       lyricLines.value = []
       lyricError.value = ''
@@ -377,5 +540,10 @@ watch(hasRomanization, (enabled) => {
   if (!enabled) {
     showRomanization.value = false
   }
+})
+
+onBeforeUnmount(() => {
+  resetLyricInteractionState()
+  cancelLyricScrollRaf()
 })
 </script>
