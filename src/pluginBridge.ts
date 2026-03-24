@@ -254,6 +254,18 @@ export async function removeQueueIndexByPlugin(index: number): Promise<void> {
   throw lastError instanceof Error ? lastError : new Error('移除队列项失败')
 }
 
+export async function clearQueueByPlugin(): Promise<void> {
+  await execBotCommand(['wq', 'clear'])
+
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const state = await fetchQueueFromPlugin(20)
+    if (!state.queue.length) return
+    await new Promise((resolve) => window.setTimeout(resolve, 120))
+  }
+
+  throw new Error('清空播放队列失败')
+}
+
 function parseSongId(link: string): string {
   const match = link.match(/[?&]id=(\d+)/)
   if (match?.[1]) return match[1]

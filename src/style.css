@@ -785,6 +785,23 @@ input[type='text'] {
   justify-content: space-between;
 }
 
+.queue-header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.queue-clear-btn {
+  white-space: nowrap;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+.queue-clear-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .result-header {
   margin-bottom: 8px;
   color: #9ca3af;

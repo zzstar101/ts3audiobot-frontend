@@ -32,7 +32,13 @@
 
     <section class="grid">
       <SearchPanel @add="addToQueue" />
-      <QueuePanel :queue="queue" :current-index="currentIndex" @play-index="playByIndex" @remove-index="removeByIndex" />
+      <QueuePanel
+        :queue="queue"
+        :current-index="currentIndex"
+        @play-index="playByIndex"
+        @remove-index="removeByIndex"
+        @clear-queue="clearQueue"
+      />
     </section>
   </main>
 </template>
@@ -42,6 +48,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import LoginPanel from './components/LoginPanel.vue'
 import PlayerPanel from './components/PlayerPanel.vue'
 import {
+  clearQueueByPlugin,
   enqueueSongToPlugin,
   fetchVolumeFromPlugin,
   fetchQueueFromPlugin,
@@ -262,6 +269,19 @@ async function removeByIndex(index: number) {
     await refreshQueueState()
     await syncRobotState()
     pluginStatus.value = '已对齐'
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : '未知错误'
+    pluginStatus.value = `同步失败：${msg}`
+  }
+}
+
+async function clearQueue() {
+  if (!queue.value.length) return
+  try {
+    await clearQueueByPlugin()
+    await refreshQueueState()
+    await syncRobotState()
+    pluginStatus.value = '已清空播放列表'
   } catch (error) {
     const msg = error instanceof Error ? error.message : '未知错误'
     pluginStatus.value = `同步失败：${msg}`

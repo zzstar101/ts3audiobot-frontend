@@ -2,7 +2,19 @@
   <section class="card panel-card queue-card">
     <div class="queue-header">
       <h2>播放队列</h2>
-      <span>共 {{ queue.length }} 首</span>
+      <div class="queue-header-right">
+        <span>共 {{ queue.length }} 首</span>
+        <button
+          class="btn queue-clear-btn"
+          type="button"
+          :disabled="!queue.length"
+          title="清空播放列表"
+          aria-label="清空播放列表"
+          @click="$emit('clear-queue')"
+        >
+          清空播放列表
+        </button>
+      </div>
     </div>
 
     <div v-if="queue.length" class="queue-list scroll-list queue-scroll-list">
@@ -59,5 +71,6 @@ const props = defineProps<{
 defineEmits<{
   'play-index': [number]
   'remove-index': [number]
+  'clear-queue': []
 }>()
 </script>
