@@ -76,8 +76,10 @@ const playType = ref<PlayType | null>(null)
 const modeName = ref(PLAY_MODE_LABELS[1])
 const isModeBusy = ref(false)
 const pausedProgressSnapshotSec = ref<number | null>(null)
+const canCorrectPauseDrift = ref(true)
 let syncTimer: number | undefined
 let progressTimer: number | undefined
+let lastPauseCorrectionAt = 0
 const lastRobotSongKey = ref('')
 
 function isUrlLike(text: string): boolean {
@@ -138,16 +140,35 @@ async function syncRobotState() {
     const songChanged = nextSongKey !== lastRobotSongKey.value
     lastRobotSongKey.value = nextSongKey
 
+    if (songChanged) {
+      pausedProgressSnapshotSec.value = null
+      canCorrectPauseDrift.value = true
+    }
+
     robotSong.value = state.currentSong
     isPlaying.value = state.isPlaying
     if (state.isPlaying) {
       pausedProgressSnapshotSec.value = null
+      canCorrectPauseDrift.value = true
       progressSec.value = state.progressSec
     } else {
       // Keep the paused position stable even if backend position keeps drifting while paused.
       if (pausedProgressSnapshotSec.value == null) {
         pausedProgressSnapshotSec.value = state.progressSec
       }
+
+      // Guard backend pause position drift to avoid resume skipping to the next song.
+      const drift = state.progressSec - pausedProgressSnapshotSec.value
+      const now = Date.now()
+      if (drift > 2 && canCorrectPauseDrift.value && now - lastPauseCorrectionAt > 1200) {
+        lastPauseCorrectionAt = now
+        try {
+          await seekSongByPlugin(pausedProgressSnapshotSec.value)
+        } catch {
+          canCorrectPauseDrift.value = false
+        }
+      }
+
       progressSec.value = pausedProgressSnapshotSec.value
     }
 
@@ -275,11 +296,29 @@ async function togglePlay() {
   if (!currentSong.value) return
   try {
     if (isPlaying.value) {
+      const snapshotSec = Math.max(0, progressSec.value)
+      pausedProgressSnapshotSec.value = snapshotSec
       await pauseSongByPlugin()
+      if (snapshotSec > 0) {
+        try {
+          await seekSongByPlugin(snapshotSec)
+        } catch {
+          // Some sources may not support seek while paused.
+        }
+      }
     } else {
       const resumeSec = pausedProgressSnapshotSec.value ?? progressSec.value
-      await playSongResumeByPlugin()
+      let preSeekWorked = false
       if (resumeSec > 0) {
+        try {
+          await seekSongByPlugin(resumeSec)
+          preSeekWorked = true
+        } catch {
+          // Fallback to post-resume seek if paused seek is unsupported.
+        }
+      }
+      await playSongResumeByPlugin()
+      if (resumeSec > 0 && !preSeekWorked) {
         try {
           await seekSongByPlugin(resumeSec)
         } catch {

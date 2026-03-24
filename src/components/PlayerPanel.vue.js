@@ -1,4 +1,4 @@
-import { computed, nextTick, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { ListOrdered, Pause, Play, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, Volume2 } from 'lucide-vue-next';
 import { MUSIC_API_BASE } from '../apiConfig';
 import { withAuthUrl } from '../auth';
@@ -9,10 +9,16 @@ const showRomanization = ref(false);
 const lyricLoading = ref(false);
 const lyricError = ref('');
 const lyricLines = ref([]);
+const lyricBoxRef = ref(null);
 const lyricListRef = ref(null);
 const lyricLineRefs = ref([]);
 const lastScrolledLyricIndex = ref(-1);
+const isLyricManualScrollActive = ref(false);
+const manualLyricIndex = ref(-1);
+const isAutoLyricFollowEnabled = ref(true);
 let lyricScrollRaf = null;
+let manualLyricRaf = null;
+let manualHideTimer = null;
 const seekPreviewSec = ref(null);
 const isSeeking = ref(false);
 const API_BASE = MUSIC_API_BASE;
@@ -158,16 +164,87 @@ const activeLyricIndex = computed(() => {
     }
     return index;
 });
+const highlightedLyricIndex = computed(() => {
+    if (isLyricManualScrollActive.value) {
+        return manualLyricIndex.value;
+    }
+    return activeLyricIndex.value;
+});
+const manualLyricTimeLabel = computed(() => {
+    if (manualLyricIndex.value < 0)
+        return '--:--';
+    const line = lyricLines.value[manualLyricIndex.value];
+    if (!line)
+        return '--:--';
+    return formatSec(line.time);
+});
 const currentLyricLine = computed(() => {
     const idx = activeLyricIndex.value;
     if (idx < 0)
         return null;
     return lyricLines.value[idx];
 });
-watch(activeLyricIndex, async (index) => {
+function cancelLyricScrollRaf() {
+    if (lyricScrollRaf !== null) {
+        window.cancelAnimationFrame(lyricScrollRaf);
+        lyricScrollRaf = null;
+    }
+}
+function cancelManualLyricRaf() {
+    if (manualLyricRaf !== null) {
+        window.cancelAnimationFrame(manualLyricRaf);
+        manualLyricRaf = null;
+    }
+}
+function clearManualHideTimer() {
+    if (manualHideTimer !== null) {
+        window.clearTimeout(manualHideTimer);
+        manualHideTimer = null;
+    }
+}
+function findClosestLyricIndexToCenter() {
+    const container = lyricListRef.value;
+    if (!container || !lyricLineRefs.value.length)
+        return -1;
+    // Always align manual target calculation with the visual baseline host.
+    const baselineHost = lyricBoxRef.value ?? container;
+    const hostRect = baselineHost.getBoundingClientRect();
+    const centerY = hostRect.top + hostRect.height / 2;
+    let closestIndex = -1;
+    let minDistance = Number.POSITIVE_INFINITY;
+    for (let i = 0; i < lyricLineRefs.value.length; i++) {
+        const lineEl = lyricLineRefs.value[i];
+        if (!lineEl)
+            continue;
+        const rect = lineEl.getBoundingClientRect();
+        const lineCenterY = rect.top + rect.height / 2;
+        const distance = Math.abs(lineCenterY - centerY);
+        if (distance < minDistance) {
+            minDistance = distance;
+            closestIndex = i;
+        }
+    }
+    return closestIndex;
+}
+function updateManualLyricTarget() {
+    if (!isLyricManualScrollActive.value)
+        return;
+    const index = findClosestLyricIndexToCenter();
+    if (index >= 0) {
+        manualLyricIndex.value = index;
+    }
+}
+function scheduleManualLyricTargetUpdate() {
+    cancelManualLyricRaf();
+    manualLyricRaf = window.requestAnimationFrame(() => {
+        manualLyricRaf = null;
+        updateManualLyricTarget();
+    });
+}
+async function scrollLyricToIndex(index, force = false) {
     if (index < 0)
         return;
-    if (index === lastScrolledLyricIndex.value)
+    if (!force && index === lastScrolledLyricIndex.value)
         return;
     await nextTick();
     const container = lyricListRef.value;
@@ -175,10 +252,7 @@ watch(activeLyricIndex, async (index) => {
     if (!container || !lineEl)
         return;
     lastScrolledLyricIndex.value = index;
-    if (lyricScrollRaf !== null) {
-        window.cancelAnimationFrame(lyricScrollRaf);
-        lyricScrollRaf = null;
-    }
+    cancelLyricScrollRaf();
     lyricScrollRaf = window.requestAnimationFrame(() => {
         lyricScrollRaf = null;
         const containerRect = container.getBoundingClientRect();
@@ -193,14 +267,90 @@ watch(activeLyricIndex, async (index) => {
             behavior: distance > 72 ? 'smooth' : 'auto'
         });
     });
+}
+function exitManualLyricScroll(opts) {
+    const resumeAuto = opts?.resumeAuto ?? true;
+    const syncAutoLine = opts?.syncAutoLine ?? true;
+    isLyricManualScrollActive.value = false;
+    manualLyricIndex.value = -1;
+    clearManualHideTimer();
+    cancelManualLyricRaf();
+    if (!resumeAuto)
+        return;
+    isAutoLyricFollowEnabled.value = true;
+    lastScrolledLyricIndex.value = -1;
+    if (!syncAutoLine)
+        return;
+    const index = activeLyricIndex.value;
+    if (index >= 0) {
+        void scrollLyricToIndex(index, true);
+    }
+}
+function armManualHideTimer() {
+    clearManualHideTimer();
+    manualHideTimer = window.setTimeout(() => {
+        exitManualLyricScroll({ resumeAuto: true, syncAutoLine: true });
+    }, 2000);
+}
+function enterManualLyricScroll() {
+    if (!lyricLines.value.length)
+        return;
+    if (!isLyricManualScrollActive.value) {
+        isLyricManualScrollActive.value = true;
+        isAutoLyricFollowEnabled.value = false;
+        const fallback = activeLyricIndex.value >= 0 ? activeLyricIndex.value : 0;
+        manualLyricIndex.value = fallback;
+    }
+    scheduleManualLyricTargetUpdate();
+    armManualHideTimer();
+}
+function onLyricWheel() {
+    enterManualLyricScroll();
+}
+function onLyricScroll() {
+    if (!isLyricManualScrollActive.value)
+        return;
+    scheduleManualLyricTargetUpdate();
+}
+function onManualLyricPlay() {
+    if (manualLyricIndex.value < 0)
+        return;
+    const line = lyricLines.value[manualLyricIndex.value];
+    if (!line)
+        return;
+    emit('seek', Math.floor(line.time));
+    exitManualLyricScroll({ resumeAuto: true, syncAutoLine: false });
+}
+async function syncLyricViewportAfterLayoutChange() {
+    await nextTick();
+    if (isLyricManualScrollActive.value) {
+        scheduleManualLyricTargetUpdate();
+        armManualHideTimer();
+        return;
+    }
+    const index = activeLyricIndex.value;
+    if (index >= 0) {
+        lastScrolledLyricIndex.value = -1;
+        void scrollLyricToIndex(index, true);
+    }
+}
+function resetLyricInteractionState() {
+    isLyricManualScrollActive.value = false;
+    manualLyricIndex.value = -1;
+    isAutoLyricFollowEnabled.value = true;
+    clearManualHideTimer();
+    cancelManualLyricRaf();
+}
+watch(activeLyricIndex, async (index) => {
+    if (!isAutoLyricFollowEnabled.value)
+        return;
+    await scrollLyricToIndex(index);
 }, { flush: 'post' });
 watch(() => `${props.currentSong?.provider ?? ''}:${props.currentSong?.id ?? ''}`, () => {
     const song = props.currentSong;
+    resetLyricInteractionState();
     lastScrolledLyricIndex.value = -1;
-    if (lyricScrollRaf !== null) {
-        window.cancelAnimationFrame(lyricScrollRaf);
-        lyricScrollRaf = null;
-    }
+    cancelLyricScrollRaf();
     if (!song) {
         lyricLines.value = [];
         lyricError.value = '';
@@ -214,6 +364,13 @@ watch(hasRomanization, (enabled) => {
     if (!enabled) {
         showRomanization.value = false;
     }
+});
+watch([showTranslation, showRomanization], () => {
+    void syncLyricViewportAfterLayoutChange();
+});
+onBeforeUnmount(() => {
+    resetLyricInteractionState();
+    cancelLyricScrollRaf();
 });
 debugger; /* PartiallyEnd: #3632/scriptSetup.vue */
 const __VLS_ctx = {};
@@ -292,8 +449,12 @@ if (__VLS_ctx.currentSong) {
     if (__VLS_ctx.lyricLines.length) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "lyric-box" },
+            ref: "lyricBoxRef",
         });
+        /** @type {typeof __VLS_ctx.lyricBoxRef} */ ;
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ onWheel: (__VLS_ctx.onLyricWheel) },
+            ...{ onScroll: (__VLS_ctx.onLyricScroll) },
             ...{ class: "lyric-list" },
             ref: "lyricListRef",
         });
@@ -303,7 +464,7 @@ if (__VLS_ctx.currentSong) {
                 key: (line.time + '-' + index),
                 ref: ((element) => __VLS_ctx.setLyricLineRef(element, index)),
                 ...{ class: "lyric-line" },
-                ...{ class: ({ active: index === __VLS_ctx.activeLyricIndex }) },
+                ...{ class: ({ active: index === __VLS_ctx.highlightedLyricIndex }) },
             });
             __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                 ...{ class: "lyric-main" },
@@ -321,6 +482,44 @@ if (__VLS_ctx.currentSong) {
                 });
                 (line.roma);
             }
+        }
+        if (__VLS_ctx.isLyricManualScrollActive) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                ...{ class: "lyric-position-overlay" },
+                'aria-hidden': "true",
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                ...{ class: "lyric-position-dash" },
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                ...{ class: "lyric-position-actions" },
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "lyric-position-time" },
+            });
+            (__VLS_ctx.manualLyricTimeLabel);
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                ...{ onClick: (__VLS_ctx.onManualLyricPlay) },
+                type: "button",
+                ...{ class: "lyric-position-play" },
+                disabled: (__VLS_ctx.manualLyricIndex < 0),
+                'aria-label': "定位到当前歌词时间并播放",
+            });
+            const __VLS_0 = {}.Play;
+            /** @type {[typeof __VLS_components.Play, ]} */ ;
+            // @ts-ignore
+            const __VLS_1 = __VLS_asFunctionalComponent(__VLS_0, new __VLS_0({
+                ...{ class: "icon-svg" },
+                size: (14),
+                strokeWidth: (2.4),
+                'aria-hidden': "true",
+            }));
+            const __VLS_2 = __VLS_1({
+                ...{ class: "icon-svg" },
+                size: (14),
+                strokeWidth: (2.4),
+                'aria-hidden': "true",
+            }, ...__VLS_functionalComponentArgsRest(__VLS_1));
         }
     }
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -360,31 +559,7 @@ if (__VLS_ctx.currentSong) {
         title: (__VLS_ctx.modeHint),
         'aria-label': "切换播放模式",
     });
-    const __VLS_0 = ((__VLS_ctx.modeIcon));
-    // @ts-ignore
-    const __VLS_1 = __VLS_asFunctionalComponent(__VLS_0, new __VLS_0({
-        ...{ class: "icon-svg" },
-        size: (18),
-        strokeWidth: (2.2),
-        'aria-hidden': "true",
-    }));
-    const __VLS_2 = __VLS_1({
-        ...{ class: "icon-svg" },
-        size: (18),
-        strokeWidth: (2.2),
-        'aria-hidden': "true",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_1));
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-        ...{ onClick: (...[$event]) => {
-                if (!(__VLS_ctx.currentSong))
-                    return;
-                __VLS_ctx.$emit('prev');
-            } },
-        ...{ class: "icon-btn" },
-        'aria-label': "上一首",
-    });
-    const __VLS_4 = {}.SkipBack;
-    /** @type {[typeof __VLS_components.SkipBack, ]} */ ;
+    const __VLS_4 = ((__VLS_ctx.modeIcon));
     // @ts-ignore
     const __VLS_5 = __VLS_asFunctionalComponent(__VLS_4, new __VLS_4({
         ...{ class: "icon-svg" },
@@ -402,31 +577,38 @@ if (__VLS_ctx.currentSong) {
         ...{ onClick: (...[$event]) => {
                 if (!(__VLS_ctx.currentSong))
                     return;
+                __VLS_ctx.$emit('prev');
+            } },
+        ...{ class: "icon-btn" },
+        'aria-label': "上一首",
+    });
+    const __VLS_8 = {}.SkipBack;
+    /** @type {[typeof __VLS_components.SkipBack, ]} */ ;
+    // @ts-ignore
+    const __VLS_9 = __VLS_asFunctionalComponent(__VLS_8, new __VLS_8({
+        ...{ class: "icon-svg" },
+        size: (18),
+        strokeWidth: (2.2),
+        'aria-hidden': "true",
+    }));
+    const __VLS_10 = __VLS_9({
+        ...{ class: "icon-svg" },
+        size: (18),
+        strokeWidth: (2.2),
+        'aria-hidden': "true",
+    }, ...__VLS_functionalComponentArgsRest(__VLS_9));
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+        ...{ onClick: (...[$event]) => {
+                if (!(__VLS_ctx.currentSong))
+                    return;
                 __VLS_ctx.$emit('toggle');
             } },
         ...{ class: "icon-btn play-main" },
         'aria-label': "播放或暂停",
     });
     if (__VLS_ctx.isPlaying) {
-        const __VLS_8 = {}.Pause;
+        const __VLS_12 = {}.Pause;
         /** @type {[typeof __VLS_components.Pause, ]} */ ;
-        // @ts-ignore
-        const __VLS_9 = __VLS_asFunctionalComponent(__VLS_8, new __VLS_8({
-            ...{ class: "icon-svg" },
-            size: (20),
-            strokeWidth: (2.4),
-            'aria-hidden': "true",
-        }));
-        const __VLS_10 = __VLS_9({
-            ...{ class: "icon-svg" },
-            size: (20),
-            strokeWidth: (2.4),
-            'aria-hidden': "true",
-        }, ...__VLS_functionalComponentArgsRest(__VLS_9));
-    }
-    else {
-        const __VLS_12 = {}.Play;
-        /** @type {[typeof __VLS_components.Play, ]} */ ;
         // @ts-ignore
         const __VLS_13 = __VLS_asFunctionalComponent(__VLS_12, new __VLS_12({
             ...{ class: "icon-svg" },
@@ -441,6 +623,23 @@ if (__VLS_ctx.currentSong) {
             'aria-hidden': "true",
         }, ...__VLS_functionalComponentArgsRest(__VLS_13));
     }
+    else {
+        const __VLS_16 = {}.Play;
+        /** @type {[typeof __VLS_components.Play, ]} */ ;
+        // @ts-ignore
+        const __VLS_17 = __VLS_asFunctionalComponent(__VLS_16, new __VLS_16({
+            ...{ class: "icon-svg" },
+            size: (20),
+            strokeWidth: (2.4),
+            'aria-hidden': "true",
+        }));
+        const __VLS_18 = __VLS_17({
+            ...{ class: "icon-svg" },
+            size: (20),
+            strokeWidth: (2.4),
+            'aria-hidden': "true",
+        }, ...__VLS_functionalComponentArgsRest(__VLS_17));
+    }
     __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
         ...{ onClick: (...[$event]) => {
                 if (!(__VLS_ctx.currentSong))
@@ -450,42 +649,42 @@ if (__VLS_ctx.currentSong) {
         ...{ class: "icon-btn" },
         'aria-label': "下一首",
     });
-    const __VLS_16 = {}.SkipForward;
+    const __VLS_20 = {}.SkipForward;
     /** @type {[typeof __VLS_components.SkipForward, ]} */ ;
     // @ts-ignore
-    const __VLS_17 = __VLS_asFunctionalComponent(__VLS_16, new __VLS_16({
+    const __VLS_21 = __VLS_asFunctionalComponent(__VLS_20, new __VLS_20({
         ...{ class: "icon-svg" },
         size: (18),
         strokeWidth: (2.2),
         'aria-hidden': "true",
     }));
-    const __VLS_18 = __VLS_17({
+    const __VLS_22 = __VLS_21({
         ...{ class: "icon-svg" },
         size: (18),
         strokeWidth: (2.2),
         'aria-hidden': "true",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_17));
+    }, ...__VLS_functionalComponentArgsRest(__VLS_21));
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "volume-row" },
     });
     __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
         ...{ class: "volume-icon" },
     });
-    const __VLS_20 = {}.Volume2;
+    const __VLS_24 = {}.Volume2;
     /** @type {[typeof __VLS_components.Volume2, ]} */ ;
     // @ts-ignore
-    const __VLS_21 = __VLS_asFunctionalComponent(__VLS_20, new __VLS_20({
+    const __VLS_25 = __VLS_asFunctionalComponent(__VLS_24, new __VLS_24({
         ...{ class: "icon-svg" },
         size: (16),
         strokeWidth: (2.1),
         'aria-hidden': "true",
     }));
-    const __VLS_22 = __VLS_21({
+    const __VLS_26 = __VLS_25({
         ...{ class: "icon-svg" },
         size: (16),
         strokeWidth: (2.1),
         'aria-hidden': "true",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_21));
+    }, ...__VLS_functionalComponentArgsRest(__VLS_25));
     __VLS_asFunctionalElement(__VLS_intrinsicElements.input)({
         ...{ onInput: (__VLS_ctx.onVolumeChange) },
         ...{ class: "slider music-slider volume-slider" },
@@ -524,6 +723,12 @@ else {
 /** @type {__VLS_StyleScopedClasses['lyric-main']} */ ;
 /** @type {__VLS_StyleScopedClasses['lyric-extra']} */ ;
 /** @type {__VLS_StyleScopedClasses['lyric-extra']} */ ;
+/** @type {__VLS_StyleScopedClasses['lyric-position-overlay']} */ ;
+/** @type {__VLS_StyleScopedClasses['lyric-position-dash']} */ ;
+/** @type {__VLS_StyleScopedClasses['lyric-position-actions']} */ ;
+/** @type {__VLS_StyleScopedClasses['lyric-position-time']} */ ;
+/** @type {__VLS_StyleScopedClasses['lyric-position-play']} */ ;
+/** @type {__VLS_StyleScopedClasses['icon-svg']} */ ;
 /** @type {__VLS_StyleScopedClasses['player-bottom']} */ ;
 /** @type {__VLS_StyleScopedClasses['progress-row']} */ ;
 /** @type {__VLS_StyleScopedClasses['slider']} */ ;
@@ -564,7 +769,10 @@ const __VLS_self = (await import('vue')).defineComponent({
             lyricLoading: lyricLoading,
             lyricError: lyricError,
             lyricLines: lyricLines,
+            lyricBoxRef: lyricBoxRef,
             lyricListRef: lyricListRef,
+            isLyricManualScrollActive: isLyricManualScrollActive,
+            manualLyricIndex: manualLyricIndex,
             panelBgStyle: panelBgStyle,
             modeDisabled: modeDisabled,
             modeIcon: modeIcon,
@@ -577,7 +785,11 @@ const __VLS_self = (await import('vue')).defineComponent({
             onVolumeChange: onVolumeChange,
             setLyricLineRef: setLyricLineRef,
             hasRomanization: hasRomanization,
-            activeLyricIndex: activeLyricIndex,
+            highlightedLyricIndex: highlightedLyricIndex,
+            manualLyricTimeLabel: manualLyricTimeLabel,
+            onLyricWheel: onLyricWheel,
+            onLyricScroll: onLyricScroll,
+            onManualLyricPlay: onManualLyricPlay,
         };
     },
     __typeEmits: {},
