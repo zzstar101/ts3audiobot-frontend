@@ -57,7 +57,7 @@ import {
   playQueueIndexByPlugin,
   removeQueueIndexByPlugin,
   playSongByPlugin,
-  playSongResumeByPlugin,
+  resumeSongByPlugin,
   PLAY_MODE_LABELS,
   seekSongByPlugin,
   setPlayModeByPlugin,
@@ -172,7 +172,7 @@ async function syncRobotState() {
         try {
           await seekSongByPlugin(pausedProgressSnapshotSec.value)
         } catch {
-          canCorrectPauseDrift.value = false
+          // Keep retry capability; transient seek failures are common while paused.
         }
       }
 
@@ -328,23 +328,7 @@ async function togglePlay() {
       }
     } else {
       const resumeSec = pausedProgressSnapshotSec.value ?? progressSec.value
-      let preSeekWorked = false
-      if (resumeSec > 0) {
-        try {
-          await seekSongByPlugin(resumeSec)
-          preSeekWorked = true
-        } catch {
-          // Fallback to post-resume seek if paused seek is unsupported.
-        }
-      }
-      await playSongResumeByPlugin()
-      if (resumeSec > 0 && !preSeekWorked) {
-        try {
-          await seekSongByPlugin(resumeSec)
-        } catch {
-          // Resume should still proceed even if seek is unsupported for this source.
-        }
-      }
+      await resumeSongByPlugin(resumeSec)
     }
     await syncRobotState()
     pluginStatus.value = '已对齐'

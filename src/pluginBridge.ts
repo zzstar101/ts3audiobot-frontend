@@ -541,8 +541,24 @@ export async function fetchVolumeFromPlugin(): Promise<number> {
   return Math.max(0, Math.min(100, Math.round(raw)))
 }
 
+export async function resumeSongByPlugin(seconds: number): Promise<void> {
+  const target = Math.max(0, Math.floor(seconds))
+  try {
+    await execBotCommand(['wq', 'resume', String(target)])
+  } catch {
+    await execBotCommand(['play'])
+    if (target > 0) {
+      try {
+        await seekSongByPlugin(target)
+      } catch {
+        // Keep resumed state even when seek fallback is unsupported.
+      }
+    }
+  }
+}
+
 export async function playSongResumeByPlugin(): Promise<void> {
-  await execBotCommand(['play'])
+  await resumeSongByPlugin(0)
 }
 
 export async function pauseSongByPlugin(): Promise<void> {
